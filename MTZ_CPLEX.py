@@ -2,7 +2,7 @@ import os
 import time
 import csv
 
-from mtz_atsp_solvers import solve_MTZ_cplex, solve_MTZ_gurobi
+from mtz_atsp_solvers import solve_MTZ_cplex
 
 
 # ============================================================
@@ -12,30 +12,49 @@ def load_atsp(filename):
     with open(filename, "r") as f:
         lines = f.readlines()
 
-    data = []
     reading = False
+    buffer = []
 
     for line in lines:
         line = line.strip()
+
+        if line.startswith("DIMENSION"):
+            n = int(line.split()[-1])
+
         if line.startswith("EDGE_WEIGHT_SECTION"):
             reading = True
             continue
+
         if reading:
             if line == "EOF":
                 break
-            row = list(map(int, line.split()))
-            data.append(row)
-    return data
+            nums = list(map(int, line.split()))
+            buffer.extend(nums)
+
+    if len(buffer) != n * n:
+        raise ValueError(
+            f"Error leyendo {filename}, se esperaban {n*n} números y llegaron {len(buffer)}"
+        )
+
+    cost = []
+    idx = 0
+    for i in range(n):
+        cost.append(buffer[idx:idx+n])
+        idx += n
+
+    return cost
 
 
 # ============================================================
-# CORRER TODAS LAS INSTANCIAS AUTOMÁTICAMENTE
+# CORRER TODAS LAS INSTANCIAS AUTOMÁTICAMENTE (solo CPLEX)
 # ============================================================
-def run_all(folder):
+def run_all_cplex(folder):
     print(f"Carpeta detectada: {folder}")
+    print("Método seleccionado: CPLEX")
 
+    # Buscar archivos ATSP y ordenarlos por tamaño
     files = [f for f in os.listdir(folder) if f.endswith(".atsp")]
-    files.sort()
+    files = sorted(files, key=lambda f: os.path.getsize(os.path.join(folder, f)))
 
     print("\nInstancias encontradas:")
     for f in files:
@@ -45,38 +64,33 @@ def run_all(folder):
 
     for file in files:
         path = os.path.join(folder, file)
-        print(f"\n=== MTZ Resolviendo {file} ===")
+        print(f"\n=== MTZ (CPLEX) Resolviendo {file} ===")
 
         cost = load_atsp(path)
         n = len(cost)
 
-        # GUROBI
-        print("   MTZ - Gurobi")
-        g_vars, g_cons, g_time, g_obj, g_bound, g_gap = solve_MTZ_gurobi(cost)
+        # Resolver con CPLEX
+        vars_count, cons_count, t_time, obj, bound, gap = solve_MTZ_cplex(cost)
 
-        # CPLEX
-        print("   MTZ - CPLEX")
-        c_vars, c_cons, c_time, c_obj, c_bound, c_gap = solve_MTZ_cplex(cost)
-
+        # Guardar resultados
         results.append([
             file, n,
-            g_vars, g_cons, g_time, g_gap, g_obj, g_bound,
-            c_vars, c_cons, c_time, c_gap, c_obj, c_bound
+            vars_count, cons_count, t_time, gap, obj, bound
         ])
 
-    # Guardar resultados
-    with open("resultados_MTZ.csv", "w", newline="") as f:
+    # Guardar CSV
+    out_name = "resultados_MTZ_cplex.csv"
+
+    with open(out_name, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow([
             "Instancia", "N",
-            "Gurobi_Vars", "Gurobi_Cons", "Gurobi_Time", "Gurobi_Gap",
-            "Gurobi_Obj", "Gurobi_Bound",
-            "CPLEX_Vars", "CPLEX_Cons", "CPLEX_Time", "CPLEX_Gap",
-            "CPLEX_Obj", "CPLEX_Bound"
+            "CPLEX_Vars", "CPLEX_Cons", "CPLEX_Time",
+            "CPLEX_Gap", "CPLEX_Obj", "CPLEX_Bound"
         ])
         writer.writerows(results)
 
-    print("\nCSV generado: resultados_MTZ.csv")
+    print(f"\nCSV generado: {out_name}")
 
 
 # ============================================================
@@ -84,4 +98,5 @@ def run_all(folder):
 # ============================================================
 if __name__ == "__main__":
     FOLDER = "instanciasdou"
-    run_all(FOLDER)
+    run_all_cplex(FOLDER)
+

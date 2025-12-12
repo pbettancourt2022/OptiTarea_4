@@ -1,7 +1,7 @@
 import time
 from docplex.mp.model import Model
-import gurobipy as gp
-from gurobipy import GRB
+#import gurobipy as gp
+#from gurobipy import GRB
 
 
 # ============================================================
