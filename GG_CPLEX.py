@@ -34,39 +34,63 @@ def load_atsp(filename):
 # ============================================================
 # SOLVER GG – CPLEX
 # ============================================================
+
 def solve_GG_cplex(cost):
     n = len(cost)
     mdl = Model("ATSP_GG")
     mdl.context.solver.log_output = True
 
+    # ========================================================
     # Variables
+    # ========================================================
+    # Variables de decisión
     x = mdl.binary_var_matrix(n, n, name="x")
-    u = [mdl.continuous_var(lb=1, ub=n, name=f"u{i}") for i in range(n)]
 
-    # Objetivo
-    mdl.minimize(mdl.sum(cost[i][j]*x[i,j] for i in range(n) for j in range(n)))
+    # Variables de flujo (single-commodity flow)
+    g = mdl.continuous_var_matrix(n, n, lb=0, name="g")
 
-    # Restricciones de fila y columna
+    # ========================================================
+    # Función objetivo
+    # ========================================================
+    mdl.minimize(
+        mdl.sum(cost[i][j] * x[i, j] for i in range(n) for j in range(n))
+    )
+
+    # ========================================================
+    # Restricciones de asignación (GG base)
+    # ========================================================
     for i in range(n):
-        mdl.add_constraint(mdl.sum(x[i,j] for j in range(n)) == 1)
-        mdl.add_constraint(mdl.sum(x[j,i] for j in range(n)) == 1)
-        mdl.add_constraint(x[i,i] == 0)
+        mdl.add_constraint(mdl.sum(x[i, j] for j in range(n)) == 1)
+        mdl.add_constraint(mdl.sum(x[j, i] for j in range(n)) == 1)
+        mdl.add_constraint(x[i, i] == 0)
 
-    # Eliminación de subtours (MTZ)
-    mdl.add_constraint(u[0] == 1)
+    # ========================================================
+    # Restricciones de flujo – GG (Gavish–Graves)
+    # Nodo 0 es el depósito
+    # ========================================================
     for i in range(1, n):
-        for j in range(1, n):
-            if i != j:
-                mdl.add_constraint(u[j] >= u[i] + 1 - n*(1 - x[i,j]))
+        mdl.add_constraint(
+            mdl.sum(g[j, i] for j in range(n)) -
+            mdl.sum(g[i, j] for j in range(n)) == 1
+        )
 
-    # ============================================================
-    # Parámetros de CPLEX para 0% gap
-    # ============================================================
-    mdl.parameters.mip.tolerances.mipgap = 0.0  # Gap 0%
-    mdl.parameters.timelimit = 3600             # Limite 1 hora
-    mdl.parameters.mip.strategy.fpheur = 1
-    mdl.parameters.mip.strategy.heuristicfreq = 1
-    mdl.parameters.mip.strategy.rinsheur = 50
+    mdl.add_constraint(
+        mdl.sum(g[0, j] for j in range(n)) -
+        mdl.sum(g[j, 0] for j in range(n)) == n - 1
+    )
+
+    # ========================================================
+    # Enlace flujo–arcos
+    # ========================================================
+    for i in range(n):
+        for j in range(n):
+            mdl.add_constraint(g[i, j] <= (n - 1) * x[i, j])
+
+    # ========================================================
+    # Parámetros CPLEX
+    # ========================================================
+    mdl.parameters.mip.tolerances.mipgap = 0.0
+    mdl.parameters.timelimit = 3600
 
     # Resolver
     t0 = time.time()
@@ -86,6 +110,7 @@ def solve_GG_cplex(cost):
 
     return mdl.number_of_variables, mdl.number_of_constraints, t_total, best_obj, best_bound, mip_gap
 
+
 # ============================================================
 # Ejecutar todas las instancias en una carpeta
 # ============================================================
@@ -102,12 +127,12 @@ def run_all(folder):
         vars_count, cons_count, t_time, obj, bound, gap = solve_GG_cplex(cost)
         results.append([file, n, vars_count, cons_count, t_time, gap, obj, bound])
 
-    with open("resultados_GG_cplex.csv", "w", newline="") as f:
+    with open("resultados_GG_cplexdou.csv", "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["Instancia","N","Vars","Cons","Tiempo","Gap","Obj","Bound"])
         writer.writerows(results)
 
-    print("\nCSV generado: resultados_GG_cplex.csv")
+    print("\nCSV generado: resultados_GG_cplexdou.csv")
 
 # ============================================================
 # MAIN
@@ -115,3 +140,4 @@ def run_all(folder):
 if __name__ == "__main__":
     folder = input("Carpeta con instancias ATSP: ")
     run_all(folder)
+
